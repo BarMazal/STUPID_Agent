@@ -1,0 +1,66 @@
+
+New features
+
+0. For each doument give two-three lines summary. For each analyzed category give 2-3 lines describing the article in the light of the specific category.
+1. Add filter of how many files to fetch max. (-1 means all)
+1.5 for debugging, limit the number of analyzed papers just to run quickly on the dataset
+2. Each configuration (targets config) creates its own folders structure for AI suggested docs
+2.5 Instead of folder structure here is a new suggestion: The Hash is two parts: Conf hash and Conf+paper hash
+    The conf hash refers to a flat table of the papers and their extracted attributed from the config
+    If conf+paper hash is found, refer to the row in the table. (or set of tables to avoid missing values)
+    Else evaluate and add to the config hash tables.
+    - On top have aggregated features of the papers from different configurations (this can be build programmatically, but might be more efficient if have it's own table. Still need to check.)
+    
+3. Automatically invalidate branch config (prev results have hash of the branch config, and a hash of value for each previous result with map between hash value and folder, so if the hash of current config is not in the map then re-evaluate, otherwise refer to existing folder)
+4. Option to run only on new items (when user hit refresh vs. nightly run)
+5. Give relevancy score.
+6. So each paper get a set of attributes, then the 4th component if the hierarchical 'search' building a virtual tree according to the search
+7. The app suggests the attribute names and values for the hierarchical search
+8. Evaluate images, graphs and tables and not only the text
+9. Use a REAL database
+10. Agentic sugestions to add resources. For example, extract references from the articles already in the branch, run them in google, see where they were publilched and add sources, or just extract keywords, search in google and do the same...
+11. Enhance not only to papers but also to find interesting courses or conferences (online or physical)
+12. Dynamic Query Mapping & Dynamic Category Extraction:
+    - Allow users to enter "free-hand" query sequences in the visualizer (e.g. "Tracking methodology, Sensors fusion, Innovation level").
+    - Use the local LLM to map user terms to existing categories (e.g. mapping "Tracking methodology" to "methodology") or identify new categories (e.g. "sensor_fusion").
+    - Present a confirmation prompt to spawn the new category, update `targets_config.json`, and run or schedule an Evaluator sweep to extract the new dynamic tags across matching papers.
+
+13. Support Continuous Category Values and Complex Numerical Filtering:
+    - Allow categories to contain continuous, numerical values (e.g., relevance confidence score, paper year, character count).
+    - Enhance visualizer upfront filters to parse and evaluate mathematical/inequality expressions (e.g., `confidence_score > 0.8`, `v1 < X <= v2`, or equations using operations like `sqrt(X)`).
+
+
+
+
+Filters to apply:
+- paper year (Separating new from old papers):
+  1. Date Category (Scientific Age): Add dynamic category 'pub_year' via categories menu [M] to let local AI extract 4-digit publication year from text.
+  2. Ingestion Age (Pipeline Age): Add 'ingestion_age' category mapping processed_timestamp into "Today", "This Week", and "Earlier" buckets.
+  3. AI Era Query (Methodology/Era): Filter using branch semantic rules (e.g., "Focus on modern Transformer-based models, exclude pre-2020 heuristic methods").
+- keywords
+- conceptual blocks (association = Hungraiang or others)
+
+Compare articles in groups (such that use different methods for block or similar methods for blocks)
+AI Innovation evaluation
+
+
+
+AI Creation example:
+I would like to find information regarding super fast computation on accelerators that uses AI. specifically such system that triggers only parts of the AI networks and only in specific times accprding to system conditions.
+
+Hmmm... cooking? Do you think there is an analogy between cooking and image processing algorithms. Let's find this out, shall we?
+
+
+
+Two last requriest:
+temperature per functionaliotuy usiung LLM - DOME?
+
+reverse engineer the code to create full detailed design with all the components description, 
+and available code branching abd pipelieme, what data it looks on and when does it skip it's
+ operation - DONE?
+
+
+ Two more things:
+ 1. Be resilient to Ctrl+C
+ 2. When limiting the number of operation start with the most recent downloded files
+ 
