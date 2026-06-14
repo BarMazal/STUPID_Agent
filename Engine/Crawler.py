@@ -278,7 +278,7 @@ from bs4 import BeautifulSoup
 from ddgs import DDGS
 
 class DataDrivenIngestionEngine:
-    def __init__(self, config_path: str = "./Configuration/targets_config.json", output_root: str = "./downloaded_research"):
+    def __init__(self, config_path: str = "./Configuration/targets_config.json", output_root: str = "./downloaded_research", min_year: int = None):
         self.config_path = config_path
         self.output_root = output_root
         os.makedirs(self.output_root, exist_ok=True)
@@ -289,6 +289,7 @@ class DataDrivenIngestionEngine:
         self.limit = None
         self.downloaded_in_session = 0
         self.session_downloads = []
+        self.min_year = min_year
 
     def _load_config(self) -> dict:
         try:
@@ -363,6 +364,9 @@ class DataDrivenIngestionEngine:
             )
             results = list(client.results(search))
             for paper in results:
+                if self.min_year is not None and paper.published.year < self.min_year:
+                    self._log(f"   ⏩ Skipping older preprint ({paper.published.year}): {paper.title[:40]}...")
+                    continue
                 if paper.pdf_url:
                     self._download_pdf(paper.pdf_url, target_folder, paper.title)
         except Exception as e:
@@ -371,6 +375,8 @@ class DataDrivenIngestionEngine:
     def fetch_from_general_web(self, subject: str, target_folder: str, source_scope: str = "duckduckgo", max_results: int = 3):
         """Engine 2: Flexible General Web Scoper with Dynamic Fallback Site Constraints."""
         query_str = f"{subject} filetype:pdf"
+        if self.min_year is not None:
+            query_str = f"{subject} {self.min_year} filetype:pdf"
         
         # Generic Fallback Logic: If source is an unidentified website domain, force site scoping
         if source_scope not in ["duckduckgo", "arxiv", "imagesensors.org"]:

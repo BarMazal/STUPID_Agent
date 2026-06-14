@@ -1,6 +1,18 @@
 import os
 import sys
 
+# Reconfigure stdout/stderr error handling to ignore/replace non-encodable chars in non-UTF-8 terminals
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(errors='ignore')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(errors='ignore')
+    except Exception:
+        pass
+
 # Inject Engine folder into Python path so that components can import each other
 sys.path.append(os.path.join(os.path.dirname(__file__), 'Engine'))
 
@@ -9,13 +21,15 @@ from Selector import HierarchicalQueryEngine
 from ArticlesAgent import GrandMasterOrchestrator
 
 class HierarchicalConsoleUI:
-    def __init__(self, limit=None, show_attributes=False):
+    def __init__(self, limit=None, show_attributes=False, filter_str="", combine_tags=True):
         self.configurator = ConfigurationLogicController()
-        self.selector = HierarchicalQueryEngine()
+        self.selector = HierarchicalQueryEngine(combine_tags=combine_tags)
         self.current_state = "TOP"
         self.active_branch_context = None
         self.limit = limit
         self.show_attributes = show_attributes
+        self.filter_str = filter_str
+        self.combine_tags = combine_tags
 
     def run_master_loop(self):
         """The core central switchboard driver loop handling nested navigational menu panels."""
@@ -205,7 +219,7 @@ class HierarchicalConsoleUI:
             orchestrator = GrandMasterOrchestrator()
             orchestrator.config_path = self.configurator.config_path
             orchestrator.storage_root = self.selector.storage_root
-            orchestrator.run_pipeline(steps, target_branch=branch_name, limit=limit, show_attributes=self.show_attributes)
+            orchestrator.run_pipeline(steps, target_branch=branch_name, limit=limit, show_attributes=self.show_attributes, filter_str=self.filter_str, combine_tags=self.combine_tags)
         except Exception as e:
             print(f"❌ Error during pipeline execution: {e}")
 
@@ -576,6 +590,36 @@ if __name__ == "__main__":
         help="Include and display extracted attributes/categories and their values in the leaf paper cards."
     )
     
+    parser.add_argument(
+        "--silent", action="store_true", default=False,
+        help="Runs the pipeline unattended without prompting for user confirmation or input."
+    )
+    
+    parser.add_argument(
+        "--visualize", type=str, default="branch",
+        help="Hierarchy sequence for visualizer when running in silent mode (e.g., 'branch,relevant')."
+    )
+    
+    parser.add_argument(
+        "--min-year", type=int, default=None,
+        help="Filter downloads to publications from or after this year (e.g., 2026)."
+    )
+
+    parser.add_argument(
+        "--filter", type=str, default="",
+        help="Initial query criteria filter to apply to the visualizer tree (e.g. 'israeli_involvement=Yes')."
+    )
+
+    parser.add_argument(
+        "--no-combine-tags", action="store_true", default=False,
+        help="Disable combined tag grouping (leaves will duplicate under multiple branches)."
+    )
+
+    parser.add_argument(
+        "--branch", type=str, default=None,
+        help="Restricts the pipeline execution only to this target branch (e.g. 'bci_gaming')."
+    )
+    
     # If executed with zero arguments, print help and exit
     if len(sys.argv) == 1:
         parser.print_help()
@@ -600,7 +644,7 @@ if __name__ == "__main__":
 
         # 1. Execute Configuration UI if requested
         if args.configure:
-            ui = HierarchicalConsoleUI(limit=args.limit, show_attributes=args.show_attributes)
+            ui = HierarchicalConsoleUI(limit=args.limit, show_attributes=args.show_attributes, filter_str=args.filter, combine_tags=not args.no_combine_tags)
             ui.run_master_loop()
 
         # Track config state after configuration exits
@@ -623,7 +667,7 @@ if __name__ == "__main__":
                 run_steps = [step.strip().upper() for step in args.run.split(",") if step.strip()]
                 
             # Invalidation Gate: Warning if configuration changed but only running a subset of components
-            if config_changed and run_steps:
+            if config_changed and run_steps and not args.silent:
                 is_full_run = (set(run_steps) == {"C", "E", "V", "Z"} or set(run_steps) == {"C", "E", "V", "S"})
                 if not is_full_run:
                     print("\n⚠️  CONFIGURATION CHANGE DETECTED ⚠️")
@@ -636,7 +680,17 @@ if __name__ == "__main__":
 
             if run_steps:
                 orchestrator = GrandMasterOrchestrator()
-                orchestrator.run_pipeline(run_steps, limit=args.limit, show_attributes=args.show_attributes)
+                orchestrator.run_pipeline(
+                    run_steps, 
+                    target_branch=args.branch,
+                    limit=args.limit, 
+                    show_attributes=args.show_attributes, 
+                    silent=args.silent, 
+                    visualize=args.visualize,
+                    min_year=args.min_year,
+                    filter_str=args.filter,
+                    combine_tags=not args.no_combine_tags
+                )
                 
         # 3. Execute Interactive Wizard if requested
         elif args.interactive:

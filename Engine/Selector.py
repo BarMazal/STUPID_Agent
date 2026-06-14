@@ -97,10 +97,11 @@ import os
 import json
 
 class HierarchicalQueryEngine:
-    def __init__(self, storage_root: str = "./downloaded_research", config_path: str = "./Configuration/targets_config.json"):
+    def __init__(self, storage_root: str = "./downloaded_research", config_path: str = "./Configuration/targets_config.json", combine_tags: bool = True):
         self.storage_root = storage_root
         self.config_path = config_path
         self.config = self.load_config()
+        self.combine_tags = combine_tags
 
     def load_config(self) -> dict:
         try:
@@ -223,8 +224,15 @@ class HierarchicalQueryEngine:
         for r in records:
             field_value = self._get_nested_value(r, current_field)
             if isinstance(field_value, list):
-                if not field_value: field_value = ["Unassigned/None"]
-                values_to_loop = field_value
+                if self.combine_tags:
+                    if field_value:
+                        stringified_val = ", ".join(sorted(str(v) for v in field_value))
+                    else:
+                        stringified_val = "Unassigned/None"
+                    values_to_loop = [stringified_val]
+                else:
+                    if not field_value: field_value = ["Unassigned/None"]
+                    values_to_loop = field_value
             else:
                 if field_value is None: field_value = "Unassigned/None"
                 values_to_loop = [field_value]

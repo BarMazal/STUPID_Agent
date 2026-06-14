@@ -1,0 +1,26 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Project output / downloaded data
+logs/
+downloaded_research/
+Visualizations/
+
+# Configuration
+Configuration/targets_config.json
+
+# Temp / test files
+test.txt
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+

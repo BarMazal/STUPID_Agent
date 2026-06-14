@@ -157,6 +157,19 @@
 
 import os
 import sys
+
+# Reconfigure stdout/stderr error handling to ignore/replace non-encodable chars in non-UTF-8 terminals
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(errors='ignore')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(errors='ignore')
+    except Exception:
+        pass
+
 import argparse
 import json
 
@@ -176,21 +189,24 @@ class GrandMasterOrchestrator:
         self.config_path = "./Configuration/targets_config.json"
         self.storage_root = "./downloaded_research"
 
-    def _verify_pipeline_integrity(self, tasks: list) -> bool:
+    def _verify_pipeline_integrity(self, tasks: list, silent: bool = False) -> bool:
         """Data Integrity Guardrail: Prevents state corruption by analyzing task dependencies."""
         if "C" in tasks and "Z" in tasks:
             if "E" not in tasks or "V" not in tasks:
                 print("\n⚠️  PIPELINE INTEGRITY WARNING ⚠️")
                 print(" 👉 You are running [Crawler] and [Visualizer] but SKIPPING [Extractor] or [Evaluator].")
                 print(" 👉 Newly crawled PDFs will NOT show up in your visual tree because they lack text sidecars and AI tags!")
+                if silent:
+                    print("   🤖 Running in silent mode. Automatically proceeding.")
+                    return True
                 confirm = input(" 🤔 Are you absolutely sure you want to proceed with this incomplete data state? (y/N): ")
                 if confirm.lower().strip() != 'y':
                     return False
         return True
 
-    def run_pipeline(self, execution_steps: list, target_branch: str = None, limit: int = None, show_attributes: bool = False):
+    def run_pipeline(self, execution_steps: list, target_branch: str = None, limit: int = None, show_attributes: bool = False, silent: bool = False, visualize: str = "branch", min_year: int = None, filter_str: str = "", combine_tags: bool = True):
         """Sequentially triggers the component classes based on validated array tokens."""
-        if not self._verify_pipeline_integrity(execution_steps):
+        if not self._verify_pipeline_integrity(execution_steps, silent=silent):
             print("🛑 Pipeline execution aborted by the user.")
             return
 
@@ -201,7 +217,7 @@ class GrandMasterOrchestrator:
         # 1. RUN CRAWLER
         if "C" in execution_steps:
             print("\n[STEP 1/5] 🛠️ Launching Ingestion Engine (Crawler)...")
-            crawler = DataDrivenIngestionEngine(config_path=self.config_path, output_root=self.storage_root)
+            crawler = DataDrivenIngestionEngine(config_path=self.config_path, output_root=self.storage_root, min_year=min_year)
             crawler.execute_daily_sync(target_branch=target_branch, limit=limit)
             new_pdfs = []
             for branch, title, url in crawler.session_downloads:
@@ -224,18 +240,21 @@ class GrandMasterOrchestrator:
         # 3. RUN EVALUATOR
         if "V" in execution_steps:
             print("\n[STEP 3/5] 🛠️ Launching Cognitive Reasoning Layer (Evaluator)...")
-            evaluator = LocalAIEvaluator(config_path=self.config_path, storage_root=self.storage_root)
+            evaluator = LocalAIEvaluator(config_path=self.config_path, storage_root=self.storage_root, silent=silent)
             evaluator.evaluate_all_new_sidecars(target_branch=target_branch, limit=limit, prioritized_metas=new_metas)
 
         # 4. RUN SELECTOR & VISUALIZER
         if "Z" in execution_steps:
             print("\n[STEP 4/5] 🛠️ Launching Hierarchy Engine & Console Presentation Interface (Visualizer)...")
-            selector_engine = HierarchicalQueryEngine(storage_root=self.storage_root)
-            ui_shell = TerminalConsoleUI(selector_engine, show_attributes=show_attributes)
-            ui_shell.run_loop()
+            selector_engine = HierarchicalQueryEngine(storage_root=self.storage_root, combine_tags=combine_tags)
+            ui_shell = TerminalConsoleUI(selector_engine, show_attributes=show_attributes, filter_str=filter_str)
+            if silent:
+                ui_shell.run_silent(visualize_sequence=visualize)
+            else:
+                ui_shell.run_loop()
         elif "S" in execution_steps:
             print("\n[STEP 5/5] 🛠️ Launching Data-Only Hierarchy Split Parser (Selector)...")
-            selector_engine = HierarchicalQueryEngine(storage_root=self.storage_root)
+            selector_engine = HierarchicalQueryEngine(storage_root=self.storage_root, combine_tags=combine_tags)
             records = selector_engine.load_all_metadata_records()
             print(f"   📊 Selector silently parsed {len(records)} metadata records. Zero UI bound.")
 

@@ -23,6 +23,8 @@ class FileBundleExtractor:
 
     def _clean_text(self, text: str) -> str:
         """Fixes dual-column line breaks and formatting artifacts."""
+        # Clean surrogate characters and invalid unicode points
+        text = text.encode('utf-8', 'ignore').decode('utf-8', 'ignore')
         # Merge hyphenated words broken across line wraps (e.g., track- \n ing -> tracking)
         text = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', text)
         # Normalize double spacing and structural breaks into a single continuous stream
@@ -50,9 +52,9 @@ class FileBundleExtractor:
         txt_path = os.path.join(target_path, f"{file_base_name}.txt")
         json_path = os.path.join(target_path, f"{file_base_name}_meta.json")
 
-        # Step A: Write the normalized text summary file if it doesn't exist
-        if not os.path.exists(txt_path):
-            with open(txt_path, "w", encoding="utf-8") as f:
+        # Step A: Write the normalized text summary file if it doesn't exist or is empty
+        if not os.path.exists(txt_path) or os.path.getsize(txt_path) == 0:
+            with open(txt_path, "w", encoding="utf-8", errors="ignore") as f:
                 f.write(clean_text)
             self._log(f"   💾 Generated plain text sidecar: {file_base_name}.txt")
 
@@ -85,7 +87,7 @@ class FileBundleExtractor:
                 }
             }
             
-            with open(json_path, "w", encoding="utf-8") as f:
+            with open(json_path, "w", encoding="utf-8", errors="ignore") as f:
                 json.dump(meta_payload, f, indent=4, ensure_ascii=False)
             self._log(f"   📋 Generated structured metadata card: {file_base_name}_meta.json")
 
@@ -109,7 +111,8 @@ class FileBundleExtractor:
             base_name, _ = os.path.splitext(os.path.basename(pdf_path))
             txt_path = os.path.join(os.path.dirname(pdf_path), f"{base_name}.txt")
             json_path = os.path.join(os.path.dirname(pdf_path), f"{base_name}_meta.json")
-            return not (os.path.exists(txt_path) and os.path.exists(json_path))
+            txt_exists = os.path.exists(txt_path) and os.path.getsize(txt_path) > 0
+            return not (txt_exists and os.path.exists(json_path))
 
         # Deduplicate and prioritize tasks
         task_seen = set()
@@ -137,6 +140,7 @@ class FileBundleExtractor:
                     full_pdf_path = os.path.join(target_path, file_name)
                     if needs_extraction(full_pdf_path) and full_pdf_path not in task_seen:
                         task_seen.add(full_pdf_path)
+                        ordered_tasks.append((target_name, full_pdf_path))
         # Sort tasks by modification time descending (newest first)
         ordered_tasks.sort(key=lambda t: os.path.getmtime(t[1]) if os.path.exists(t[1]) else 0, reverse=True)
         total_to_process = len(ordered_tasks)

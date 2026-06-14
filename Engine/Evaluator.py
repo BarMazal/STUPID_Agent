@@ -143,24 +143,51 @@ import requests
 import sys
 import time
 
+# Reconfigure stdout/stderr error handling to ignore/replace non-encodable chars in non-UTF-8 terminals
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(errors='ignore')
+    except Exception:
+        pass
+if hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(errors='ignore')
+    except Exception:
+        pass
+
+def safe_write(text: str):
+    try:
+        sys.stdout.write(text)
+        sys.stdout.flush()
+    except UnicodeEncodeError:
+        try:
+            # Fall back to ASCII characters only, removing/ignoring others
+            cleaned_text = text.encode('ascii', errors='ignore').decode('ascii')
+            sys.stdout.write(cleaned_text)
+            sys.stdout.flush()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 class LocalAIEvaluator:
-    def __init__(self, config_path: str = "./Configuration/targets_config.json", storage_root: str = "./downloaded_research", model_name: str = "deepseek-r1:14b", ollama_url: str = "http://localhost:11434"):
+    def __init__(self, config_path: str = "./Configuration/targets_config.json", storage_root: str = "./downloaded_research", model_name: str = "deepseek-r1:14b", ollama_url: str = "http://localhost:11434", silent: bool = False):
         self.config_path = config_path
         self.storage_root = storage_root
         self.model_name = model_name
         self.ollama_url = ollama_url
         self.config = self._load_config()
         self.session_evaluations = []
+        self.silent = silent
 
     def _print_evaluator_progress(self, current, max_val):
         import sys
         progress_str = f"   ⏳ Progress: Evaluating {current}/{max_val}"
-        sys.stdout.write(f"\r{progress_str:<80}")
-        sys.stdout.flush()
+        safe_write(f"\r{progress_str:<80}")
 
     def _log(self, message: str):
         import sys
-        sys.stdout.write(f"\r{message:<80}\n")
+        safe_write(f"\r{message:<80}\n")
         if hasattr(self, 'max_to_evaluate') and hasattr(self, 'evaluated_in_session'):
             self._print_evaluator_progress(self.evaluated_in_session, self.max_to_evaluate)
 
@@ -275,8 +302,7 @@ class LocalAIEvaluator:
         )
 
         # Immediately print the initial thinking status
-        sys.stdout.write("\r      🧠 Thinking. (00h 00m 00s)   ")
-        sys.stdout.flush()
+        safe_write("\r      🧠 Thinking. (00h 00m 00s)   ")
 
         payload = {
             "model": self.model_name,
@@ -296,13 +322,12 @@ class LocalAIEvaluator:
         
         last_anim_time = time.time()
         current_window_start = time.time()
-        time_window_seconds = 120 # 2 minutes global timeout
+        time_window_seconds = 600 #120 # 2 minutes global timeout
         
         try:
-            response_stream = requests.post(f"{self.ollama_url}/api/generate", json=payload, stream=True, timeout=30)
+            response_stream = requests.post(f"{self.ollama_url}/api/generate", json=payload, stream=True, timeout=time_window_seconds)
             if response_stream.status_code != 200:
-                sys.stdout.write(f"\r      ❌ Connection error: Status code {response_stream.status_code}\n")
-                sys.stdout.flush()
+                safe_write(f"\r      ❌ Connection error: Status code {response_stream.status_code}\n")
                 return {}
 
             lines_iterator = response_stream.iter_lines()
@@ -320,14 +345,18 @@ class LocalAIEvaluator:
                 if now - last_anim_time > 0.3:
                     anim = animation_cycle[cycle_idx]
                     cycle_idx = (cycle_idx + 1) % len(animation_cycle)
-                    sys.stdout.write(f"\r      🧠 Thinking{anim} ({time_string})   ")
-                    sys.stdout.flush()
+                    safe_write(f"\r      🧠 Thinking{anim} ({time_string})   ")
                     last_anim_time = now
 
                 if current_window_duration > time_window_seconds:
-                    sys.stdout.write("\r" + " " * 60 + "\r")
-                    sys.stdout.flush()
+                    safe_write("\r" + " " * 60 + "\r")
                     
+                    if getattr(self, 'silent', False):
+                        safe_write(f"\n      🚀 Window limits automatically extended in silent mode ({int(total_elapsed)}s). Continuing token tracking sequence...\n")
+                        current_window_start = time.time()
+                        last_anim_time = time.time()
+                        continue
+
                     print(f"\n      ⚠️  TIMEOUT GATE EXCEEDED: The model has been processing for {int(total_elapsed)} seconds.")
                     choice = input("      🤔 Do you want to extend this reasoning session? (Y/n): ").strip().lower()
                     
@@ -354,8 +383,7 @@ class LocalAIEvaluator:
                 except Exception:
                     time.sleep(0.05)
 
-            sys.stdout.write("\r" + " " * 60 + "\r")
-            sys.stdout.flush()
+            safe_write("\r" + " " * 60 + "\r")
 
             if "</think>" in full_text_response:
                 full_text_response = full_text_response.split("</think>")[-1].strip()
@@ -364,21 +392,23 @@ class LocalAIEvaluator:
             return json.loads(full_text_response)
 
         except Exception as e:
-            sys.stdout.write("\r" + " " * 60 + "\r")
-            sys.stdout.flush()
-            # print(f"\n❌ Pipeline streaming anomaly: {e}")
+            safe_write("\r" + " " * 60 + "\r")
+            # Log the actual exception safely so it's not silently ignored!
+            try:
+                err_msg = str(e).encode('ascii', errors='ignore').decode('ascii')
+                print(f"\n❌ Pipeline streaming anomaly: {err_msg}")
+            except Exception:
+                pass
             return {}
 
     def evaluate_all_new_sidecars(self, target_branch: str = None, limit: int = None, prioritized_metas: list = None):
         if not os.path.exists(self.storage_root):
             import sys
-            sys.stdout.write(f"\r⚠️ Storage target footprint empty.\n")
-            sys.stdout.flush()
+            safe_write(f"\r⚠️ Storage target footprint empty.\n")
             return
 
         import sys
-        sys.stdout.write(f"🧠 AI Evaluation Layer active using model instance: [{self.model_name}]...\n")
-        sys.stdout.flush()
+        safe_write(f"🧠 AI Evaluation Layer active using model instance: [{self.model_name}]...\n")
         
         self.config = self._load_config()  # Ensure latest config is loaded
         
@@ -573,8 +603,7 @@ class LocalAIEvaluator:
             self._print_evaluator_progress(self.evaluated_in_session, self.max_to_evaluate)
             
         if self.max_to_evaluate > 0:
-            sys.stdout.write("\n")
-            sys.stdout.flush()
+            safe_write("\n")
 
         # Logging
         if self.session_evaluations:

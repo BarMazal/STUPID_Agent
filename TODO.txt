@@ -29,7 +29,12 @@ New features
     - Allow categories to contain continuous, numerical values (e.g., relevance confidence score, paper year, character count).
     - Enhance visualizer upfront filters to parse and evaluate mathematical/inequality expressions (e.g., `confidence_score > 0.8`, `v1 < X <= v2`, or equations using operations like `sqrt(X)`).
 
-
+14. Add timers to all AIs...
+15. Check which phrases matched most articles and suggest replacement of keywords/phrases
+16. Add sub branches
+17. Add GUI
+18. Add the option to select which branches to watch and which branches to actively run through the pipeline
+19. login with user and connect process with user, have global user for agent autoruns
 
 
 Filters to apply:

@@ -1,9 +1,10 @@
 from Selector import HierarchicalQueryEngine
 
 class TerminalConsoleUI:
-    def __init__(self, engine: HierarchicalQueryEngine, show_attributes: bool = False):
+    def __init__(self, engine: HierarchicalQueryEngine, show_attributes: bool = False, filter_str: str = ""):
         self.engine = engine
         self.show_attributes = show_attributes
+        self.filter_str = filter_str
 
     def render_tree_to_console(self, node: dict, indent: str = ""):
         """Visually loops through the engine's data dictionary to format tree lines on screen."""
@@ -484,12 +485,13 @@ class TerminalConsoleUI:
                         match = False
                         break
                 elif isinstance(val, list):
-                    val_lower = [str(item).lower().strip() for item in val]
-                    if v.lower().strip() not in val_lower:
+                    q = v.lower().strip()
+                    if not any(q in str(item).lower() for item in val):
                         match = False
                         break
                 else:
-                    if str(val).lower().strip() != v.lower().strip():
+                    q = v.lower().strip()
+                    if q not in str(val).lower():
                         match = False
                         break
             if match:
@@ -604,11 +606,14 @@ class TerminalConsoleUI:
                 print(f"\nComputing split mapping for path: { ' ➔ '.join(conditions_sequence) }")
                 print("=" * 90)
                 
+                default_prompt = f" [default: {self.filter_str}]" if self.filter_str else ""
                 while True:
-                    filter_input = input("🎯 Enter filter conditions (e.g. relevant=true, branch=ccd_sensors), 'help' for options, or press Enter: ").strip()
+                    filter_input = input(f"🎯 Enter filter conditions (e.g. relevant=true, branch=ccd_sensors){default_prompt}, 'help' for options, or press Enter: ").strip()
                     if filter_input.lower() in ["help", "?", "h"]:
                         self.show_filter_help(records)
                         continue
+                    if not filter_input and self.filter_str:
+                        filter_input = self.filter_str
                     break
                 filtered_records = self.filter_records(records, filter_input)
                 print(f"📊 Filtered dataset: {len(filtered_records)} of {len(records)} records matching filters.")
@@ -624,6 +629,47 @@ class TerminalConsoleUI:
             except KeyboardInterrupt:
                 print("\n👋 Exiting Query Shell Workspace.")
                 break
+
+    def run_silent(self, visualize_sequence: str = "branch", filter_str: str = None):
+        print("📊 Running Visualizer in Unattended (Silent) Mode...")
+        records = self.engine.load_all_metadata_records()
+        if not records:
+            print("⚠️ Data index tracking records empty. Cannot visualize.")
+            return
+            
+        print(f"📊 Successfully loaded and indexed {len(records)} active records from disk.")
+        
+        # If running silent, force showing attributes as requested
+        self.show_attributes = True
+        
+        # Determine the sequence fields (e.g. "branch,relevant" -> ["branch", "relevant"])
+        conditions_sequence = [c.strip().lower() for c in visualize_sequence.split(",") if c.strip()]
+        
+        config = self.engine.load_config()
+        categories = config.get("categories", [])
+        valid_keywords = {cat["key"].lower().strip() for cat in categories}
+        # Fallback to system categories if not loaded
+        if not valid_keywords:
+            valid_keywords = {"branch", "relevant", "pub_year", "institute", "innovation", "methodology"}
+            
+        # Filter out invalid fields
+        conditions_sequence = [c for c in conditions_sequence if c in valid_keywords]
+        if not conditions_sequence:
+            conditions_sequence = ["branch"]
+            
+        print(f"📊 Visualizing with hierarchy sequence: {' ➔ '.join(conditions_sequence)}")
+        
+        if filter_str is None:
+            filter_str = self.filter_str
+            
+        filtered_records = self.filter_records(records, filter_str)
+        print(f"📊 Filtered dataset: {len(filtered_records)} of {len(records)} records matching filters.")
+        
+        compiled_tree = self.engine.build_query_tree(filtered_records, conditions_sequence)
+        
+        # Save HTML tree file and print success
+        self.save_tree_to_html(compiled_tree, conditions_sequence, filter_str=filter_str)
+        print("🏁 Visualizer silent generation complete.")
 
 if __name__ == "__main__":
     import argparse
