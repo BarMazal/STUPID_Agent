@@ -444,6 +444,60 @@ class DataDrivenIngestionEngine:
             self._log(f"   ❌ Specialized custom scraper failed: {e}")
 
     # =====================================================================
+    # 🛠️ CVF / CVPR DEDICATED SCRAPER
+    # =====================================================================
+    def fetch_from_cvf(self, subject: str, target_folder: str, max_results: int = 5):
+        """Engine 4: Scrapes CVF openaccess proceedings for matching papers."""
+        conferences = ["CVPR2026", "CVPR2025", "CVPR2024", "CVPR2023", "ICCV2025", "ICCV2023", "ECCV2024", "ECCV2022"]
+        keywords = [k.lower() for k in subject.split() if len(k) > 2]
+        if not keywords:
+            return
+
+        download_count = 0
+        for conf in conferences:
+            if download_count >= max_results:
+                break
+
+            proceedings_url = f"https://openaccess.thecvf.com/{conf}"
+            self._log(f"🕸️ Scraping CVF proceedings [{conf}] for: '{subject}'")
+
+            try:
+                resp = requests.get(proceedings_url, headers=self.headers, timeout=20)
+                if resp.status_code != 200:
+                    continue
+
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                paper_blocks = soup.find_all('div', class_='papertitle')
+
+                for block in paper_blocks:
+                    if download_count >= max_results:
+                        break
+
+                    title_el = block.find('a', class_='title')
+                    if not title_el:
+                        continue
+
+                    title = title_el.get_text(strip=True)
+                    if not any(kw in title.lower() for kw in keywords):
+                        continue
+
+                    pdf_link = block.find('a', string=lambda t: t and 'pdf' in t.lower())
+                    if not pdf_link or not pdf_link.get('href'):
+                        continue
+
+                    pdf_url = pdf_link['href']
+                    if not pdf_url.startswith('http'):
+                        pdf_url = urllib.parse.urljoin(proceedings_url, pdf_url)
+
+                    self._log(f"   🎯 CVF match: '{title[:50]}...'")
+                    success = self._download_pdf(pdf_url, target_folder, title)
+                    if success:
+                        download_count += 1
+
+            except Exception as e:
+                self._log(f"   ❌ CVF scraper failed for {conf}: {e}")
+
+    # =====================================================================
     # 🚀 PIPELINE MASTER CONTROLLER ORCHESTRATOR
     # =====================================================================
     def execute_daily_sync(self, target_branch: str = None, limit: int = None):
@@ -495,6 +549,8 @@ class DataDrivenIngestionEngine:
                     # 1. SPECIFIC CUSTOM FUNCTION ROUTING SWITCH
                     if source == "imagesensors.org":
                         self.fetch_from_imagesensors_org(phrase, target_dir)
+                    elif source == "cvf":
+                        self.fetch_from_cvf(phrase, target_dir)
                     # 2. STANDARD DUCKDUCKGO ROUTING SWITCH
                     elif source == "duckduckgo":
                         self.fetch_from_general_web(phrase, target_dir, source_scope="duckduckgo")
